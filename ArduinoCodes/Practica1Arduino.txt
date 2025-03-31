@@ -1,0 +1,41 @@
+void setup() {
+Serial.begin(115200);
+}
+
+void loop() {
+  if (Serial.available()){
+    if(Serial){
+      dato = Serial.read();
+
+      if ((dato>=97) && (dato<=122)){
+        if (dato>=122){
+          dato2=97; }
+        else {
+          dato2=dato+1;}}
+
+      else if ((dato>=65) && (dato<=90)){
+        if (dato>=90){
+          dato2=65; }
+        else {
+          dato2=dato+1;}}
+
+      else if ((dato>=48) && (dato<=57)){
+        if (dato>=57){
+          dato2=; }
+        else {
+          dato2=dato+1;}}
+      else {
+        dato2=0;
+      }
+      if (dato!=10){
+        Serial.print(dato2);
+      }
+      else {
+        Serial.println(" ");
+      }
+    } 
+  }
+  else {
+    delay(1000);
+  }
+}
