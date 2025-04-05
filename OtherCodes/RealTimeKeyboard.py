@@ -1,9 +1,8 @@
 import serial
 import keyboard  # Necesitas instalarlo con: pip install keyboard
 import time
-arduino = serial.Serial('COM4', 115200)  # Ajusta 'COM3' al puerto de tu Arduino
+arduino = serial.Serial('COM3', 115200)  # Ajusta 'COM3' al puerto de tu Arduino
 arduino.flush
-
 while True:
     tecla=keyboard.read_key()
     arduino.write(tecla.encode())  # Envía la tecla por Serial
@@ -15,4 +14,3 @@ while True:
         linea=arduino.read()
         print("Recibido:", linea.decode('utf-8')) 
     linea=0
-    
