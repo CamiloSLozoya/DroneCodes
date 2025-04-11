@@ -8,7 +8,6 @@ n=5
 if not pi.connected:
     print("No se pudo conectar a pigpiod")
     exit()
-
 servo_pin = 18  # GPIO18 = pin físico 12
 
 def set_angle(angle):

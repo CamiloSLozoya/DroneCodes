@@ -1,7 +1,8 @@
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
-import time 
+import time
+import pigpio 
 
 #--------------------------------------------------------------------------------------------------------------
 #Este es el setup, aqui se definen las variables y constantes utilizandas
@@ -18,10 +19,25 @@ VerdeAlto1 = np.array([89, 255, 255], np.uint8)
 Verde_min=35 #porcentaje
 Verdor_min=50 #porcentaje
 
+# Iniciar pigpio
+pi = pigpio.pi()
+#Cambiar este numero dependiendo de los ciclos deseados
+n=5
+if not pi.connected:
+    print("No se pudo conectar a pigpiod")
+    '''exit()''' #Quitar el comentado de aqui
+servo_pin = 18  # GPIO18 = pin físico 12
+
 #Variables de tiempo
 measureTime=2 #Cantidad de segundos que espera para realizar la acción
 t_start=time.gmtime()
 t_next=t_start.tm_sec+measureTime
+
+def set_angle(angle):
+    angle = max(0, min(180, angle))
+    pulse = 500 + int((angle / 180) * 2000)
+    pi.set_servo_pulsewidth(servo_pin, pulse)
+    print(f"⟶ Ángulo: {angle}° | PWM: {pulse} μs")
 
 #--------------------------------------------------------------------------------------------------------------
 #Loop
@@ -68,10 +84,21 @@ while True:
                 #Actuar con el servomotor
                 if (porcentaje_verde>=Verde_min) & (porcentaje_verdor>=Verdor_min):
                     print("Activar Servo")
-                    # -------------------------------
-                    # Aqui va el codigo para activar el servo
-                    # -------------------------------
-
+                    '''
+                    for i in range(1,n+1):
+                        set_angle(90)
+                        time.sleep(0.01)
+                        set_angle(95)
+                        time.sleep(0.01)
+                        set_angle(90)
+                        time.sleep(0.01)
+                        set_angle(0)
+                        time.sleep(0.01)
+                        set_angle(5)
+                        time.sleep(0.01)
+                        set_angle(0)
+                        time.sleep(0.2) 
+                        '''
                 t_next=t.tm_sec+measureTime
                 if (t_next>=60):
                     t_next=t_next%60
@@ -83,6 +110,3 @@ while True:
     else: 
         print("Error: no se pudo abrir la camara.")
         exit()
-
-
-    
