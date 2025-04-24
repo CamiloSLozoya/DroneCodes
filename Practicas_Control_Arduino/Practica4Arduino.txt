@@ -1,0 +1,24 @@
+//int Pin = 0;
+int valor;
+float signal=0;
+String signal_string;
+#define PIN_LED 2
+#define PWM 3
+
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(PIN_LED, OUTPUT);
+  pinMode(PWM, OUTPUT);
+}
+
+void loop() {
+  // Tiempo actual
+  if (Serial.available()) {
+    signal_string = Serial.readStringUntil('\n');  // Lee hasta salto de línea
+    signal = signal_string.toFloat();
+    analogWrite(PWM,signal);
+    Serial.println(signal);
+  }
+  delay(100);
+}

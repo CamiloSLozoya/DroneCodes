@@ -1,0 +1,35 @@
+int Pin = 0;
+int valor;
+String LED;
+#define PIN_LED 2
+
+unsigned long tiempoAnterior = 0;
+const unsigned long intervalo = 2000;  // 2 segundos
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(PIN_LED, OUTPUT);
+}
+
+void loop() {
+  // Tiempo actual
+  unsigned long tiempoActual = millis();
+
+  // Enviar valor cada 2 segundos
+  if (tiempoActual - tiempoAnterior >= intervalo) {
+    tiempoAnterior = tiempoActual;
+    valor = analogRead(Pin);
+    Serial.println(valor);  // Envía el valor leído por el puerto serial
+  }
+
+  // Leer comandos del puerto serial sin bloquear
+  if (Serial.available()) {
+    LED = Serial.readStringUntil('\n');  // Lee hasta salto de línea
+    float LED_Float = LED.toFloat();
+    if (LED_Float == 1.0) {
+      digitalWrite(PIN_LED, HIGH);
+    } else {
+      digitalWrite(PIN_LED, LOW);
+    }
+  }
+}

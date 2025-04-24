@@ -1,0 +1,36 @@
+#include <driver/dac.h>
+
+char dato;
+String Vol_string;
+int output=0;
+#define DAC_CH1 25
+#define Vol_Max 3.0
+//dac_output_voltage(DAC_CH1, Val);
+
+void setup() {
+Serial.begin(9600);
+}
+
+void loop() {
+  if (Serial.available()){
+    if(Serial){
+      dato = Serial.read();
+      if (dato=='w'){
+        Vol_string=Serial.readString();
+        float voltaje=Vol_string.toFloat();
+        voltaje=constrain(voltaje, 0.0, 3.0);
+        Serial.println(voltaje);
+        output=(voltaje)*255/Vol_Max;
+        Serial.println(output);
+      }
+      else if (dato==10){
+        Serial.println(" ");
+      }
+    } 
+  }
+  else {
+    dacWrite(DAC_CH1, output);
+    delay(1000);
+  }
+}
+
