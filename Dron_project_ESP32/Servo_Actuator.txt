@@ -1,0 +1,64 @@
+#include <Wire.h>
+#include <string.h>
+#include <ESP32Servo.h>
+//#include <SoftwareSerial.h> 
+#include "TinyGPS++.h";
+#include "HardwareSerial.h";
+#define MAX_DATA_SIZE         80
+#define MAX_MESSAGE_SIZE      100
+#define COMM_DELAY_SECONDS    1
+#define LED_PIN               2
+
+//Servo_ESP32 servo;
+static const int servoPin_sow = 4;Servo_ESP32 servo_sow;
+char charValue;
+            
+unsigned long previousMillis;
+unsigned long timeInterval;
+
+void setup(void) {
+  delay(200);
+  Serial.begin(115200);                           
+  //Servo
+  servo_sow.attach(servoPin_sow);
+  //Others
+  pinMode(LED_PIN, OUTPUT);
+  timeInterval = COMM_DELAY_SECONDS*1000;
+  previousMillis=millis();
+}
+
+void loop() {
+  unsigned long currentMillis = millis();
+  // If TimeInterval is over, then send data to the station
+  if(currentMillis - previousMillis > timeInterval) {
+    // Update timeinterval
+    previousMillis = currentMillis;
+    if (Serial.avilable()){
+      charValue=Serial.read();
+      if (charValue=='R'){
+        sow();
+      }
+      else {
+        Serial.println("Not a valid char");
+      }
+    }
+    else {
+      charValue = 0;
+    }
+  }
+}
+
+void  sow()
+{
+  for (int i = 0; i < 5; ++i) //abre y cierra el servo una cantidad de veces para hacer juego y liberar las semillas.
+    {
+      servoPin_sow.write(180); //libera
+      Serial.println("Este es 180");
+      delay(2000);
+      servoPin_sow.write(0);
+      delay(2000);       
+      Serial.println("Este es 0");
+    }
+  Serial.println("Servo, libero el drogue");
+  delay(2000); //comentar esto
+}

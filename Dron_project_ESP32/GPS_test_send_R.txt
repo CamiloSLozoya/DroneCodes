@@ -1,0 +1,71 @@
+#include <Wire.h>
+#include <string.h>
+#include <SoftwareSerial.h> 
+#include "TinyGPS++.h";
+#include "HardwareSerial.h";
+#define MAX_DATA_SIZE         80
+#define MAX_MESSAGE_SIZE      100
+#define COMM_DELAY_SECONDS    1
+#define LED_PIN               2 //GPS valid indicator
+//GPS
+TinyGPSPlus gps;
+#define swsTX 34 // Transmit FROM GPS
+#define swsRX 35// Receive TO GPS
+#define GPSBaud 9600 
+SoftwareSerial GPSserial(swsRX, swsTX);//LORA 16, 17
+
+
+void setup() {
+  //Puerto serial
+  Serial.begin(115200);
+  //GPS
+  GPSserial.begin(9600);
+  delay(200);
+  //LED
+  pinMode(LED_PIN, OUTPUT);
+}
+
+void loop() {
+  //This code only print the values of the GPS when we send with the serial port a R
+    if (Serial.available()){
+      char charValue=Serial.read();
+      if (charValue=='R'){
+        //-----------------------------------------------------
+        // Put here the actions that are going to execute
+        //-----------------------------------------------------
+        while (GPSserial.available() > 0) {
+          gps.encode(GPSserial.read());
+        }
+        // Print coordenates of the GPS
+        char data_out[MAX_DATA_SIZE];
+        sprintf(data_out,"LAT,%11.8f,LONG,%13.8f,ALT,%6.1f;",gps.location.lat(),gps.location.lng(),gps.altitude.meters());
+        Serial.println(data_out); 
+      }
+      else {
+        Serial.println("Not a valid char");
+      }
+    }
+    else {
+      checkGPSconnection();
+    }
+  }
+
+int checkGPSconnection()
+{
+  static int toggle_led=0;
+  // Blink led if gps location is not valid, otherwise led is on
+  if (!gps.location.isValid() ){
+     if (toggle_led==0){
+        digitalWrite(LED_PIN,HIGH);
+        toggle_led=1;
+      } else{
+         digitalWrite(LED_PIN,LOW);
+         toggle_led=0;
+      }
+      return 0;
+  } else {
+      digitalWrite(LED_PIN,HIGH);
+      toggle_led=1;
+      return 1;
+  }
+}

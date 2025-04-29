@@ -1,0 +1,49 @@
+#include <Adafruit_Sensor.h>
+#include <DHT.h>
+#include <DHT_U.h>
+
+#define DHTPIN 4 //Pin de señal
+#define DHTTYPE DHT11 //El sensor que se está usando
+
+DHT_Unified dht(DHTPIN, DHTTYPE); //Recopila las 2 variables previamente definidas
+
+void setup() {
+  Serial.begin(115200); //Bauds que deben ser colocados en el Serial Monitor
+  // Initialize temperature sensor
+  dht.begin();
+}
+
+void loop() {
+  if (Serial.available()) { // Check if data is available to read
+    char inputChar = Serial.read(); // Read the incoming character
+    if (inputChar == 'R'){
+      SensorRead();
+    }
+    else{
+      Serial.println("Bad input, try again");
+    }
+}
+}
+
+void SensorRead() {
+      sensors_event_t event;
+      dht.temperature().getEvent(&event);
+      if (isnan(event.temperature)) {
+      Serial.println(F("Error reading temperature!"));
+      }
+      else {
+      Serial.print(F("Temperature: "));
+      Serial.print(event.temperature);
+      Serial.println(F("°C"));
+      }
+      // Get humidity event and print its value.
+      dht.humidity().getEvent(&event);
+      if (isnan(event.relative_humidity)) {
+      Serial.println(F("Error reading humidity!"));
+      }
+      else {
+      Serial.print(F("Humidity: "));
+      Serial.print(event.relative_humidity);
+      Serial.println(F("%"));
+      }
+}
