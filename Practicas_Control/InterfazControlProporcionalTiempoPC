@@ -16,13 +16,17 @@ r = 0.0
 y = 0.0
 e = 0.0
 u = 0.0
-y_historial = []
-e_historial = []
-u_historial = []
+e_percent=0.0
+y_historial = [0]
+e_historial = [0,0]
+e_historial_percent = [0]
+u_historial = [0]
 start_loop = False
-kp=0.09
+kp=1.0
+ki=0.5
+kd=0.05
 u_min=0
-u_max=1023
+u_max=255
 
 MAX_PUNTOS = 50  # Número de puntos a mostrar en la gráfica
 try: 
@@ -32,13 +36,13 @@ except serial.SerialException as w:
         print(f"Error abriendo el puerto serial: {w}")
 
 def actualizar_valores():
-    global r, y, e, u
+    global r, y, e, u, u_historial, e_historial, e_percent
     try:
-        r = float(entrada_var.get())
-        e = ((r - y)/r)*100
+        e = (r - y)
+        e_percent=(r-y)/r*100
 
         #-----------------------Control-----------------------------
-        u=kp*(r - y)
+        u=(kp+ki+kd)*e+(-kp-2*kd)*e_historial[-1]+(kd)*e_historial[-2]+u_historial[-1]
         if (u>u_max):
             u=u_max
         if (u<u_min):
@@ -46,7 +50,7 @@ def actualizar_valores():
         #------------------------------------------------------------
 
         salida_label.config(text=f"Salida (u): {u:.2f}")
-        error_label.config(text=f"Error (e): {e:.2f}")
+        error_label.config(text=f"Error (e): {e_percent:.2f}")
         entrada_label.config(text=f"Entrada (y): {y:.2f}")
         actualizar_grafica()
         #enviar_serial()
@@ -57,7 +61,7 @@ def actualizar_valores():
 
 def enviar_serial():
     global u, y, start_loop
-    measure_time = 5  # segundos
+    measure_time = 1  # segundos
     last_time = time.time()
 
     while True:
@@ -110,17 +114,25 @@ def actualizar_grafica():
     e_historial.append(e)
     if len(e_historial) > MAX_PUNTOS:
         e_historial.pop(0)
-    linea_e.set_data(eje_x, e_historial)
+
+    e_historial_percent.append(e_percent)
+    if len(e_historial_percent) > MAX_PUNTOS:
+        e_historial_percent.pop(0)
+    linea_e.set_data(eje_x, e_historial_percent)
     ax_e.relim()
     ax_e.autoscale_view()
 
     canvas.draw()
 
 def actualizar_referencia():
-    global start_loop
+    global start_loop, r, u_max, u_min
     start_loop=True
     try:
         r = float(entrada_var.get())
+        if (r>u_max):
+            r=u_max
+        if (r<u_min):
+            r=u_min
         referencia_label.config(text=f"Referencia (r): {r:.2f}")
     except ValueError:
         referencia_label.config(text="Referencia (r): Valor inválido")
