@@ -24,7 +24,9 @@ u_historial = [0]
 start_loop = False
 kc=1.0
 u_min=0
-u_max=255
+u_max=1023
+y_min=0
+y_max=255.
 
 MAX_PUNTOS = 50  # Número de puntos a mostrar en la gráfica
 try: 
@@ -41,6 +43,7 @@ def actualizar_valores():
 
         #-----------------------Control-----------------------------
         u=(kc)*e+(-kc*0.23)*e_historial[-1]+u_historial[-1]
+       # u=e*1
         if (u>u_max):
             u=u_max
         if (u<u_min):
@@ -59,7 +62,7 @@ def actualizar_valores():
 
 def enviar_serial():
     global u, y, start_loop
-    measure_time = 1  # segundos
+    measure_time = 0.1  # 100 ms
     last_time = time.time()
 
     while True:
@@ -74,16 +77,17 @@ def enviar_serial():
                     print(f"Error al escribir en el puerto: {err}")
                 last_time = current_time
 
-            # Intentar leer la respuesta de Arduino
-            if arduino.in_waiting > 0:
-                try:
-                    line = arduino.readline().decode('utf-8').strip()
-                    if line:
-                        y = float(line)
-                        root.after(0, actualizar_valores)
-                except ValueError:
-                    print(f"No se pudo convertir '{line}' a float.")
-        time.sleep(0.1)
+                # Intentar leer la respuesta de Arduino
+                if arduino.in_waiting > 0:
+                    try:
+                        line = arduino.readline().decode('utf-8').strip()
+                        if line:
+                            y = float(line)
+                            root.after(0, actualizar_valores)
+                    except ValueError:
+                        print(f"No se pudo convertir '{line}' a float.")
+        time.sleep(0.001)  # evitar sobrecargar CPU
+
 
 
 def actualizar_grafica():
@@ -97,16 +101,12 @@ def actualizar_grafica():
 
     #Refrescar grafica en y
     linea_y.set_data(eje_x, y_historial)
-    ax_y.relim()
-    ax_y.autoscale_view()
     
     #Refrescar grafica en u
     u_historial.append(u)
     if len(u_historial) > MAX_PUNTOS:
         u_historial.pop(0)
     linea_u.set_data(eje_x, u_historial)
-    ax_u.relim()
-    ax_u.autoscale_view()
 
     #Refrescar grafica en e
     e_historial.append(e)
@@ -117,8 +117,6 @@ def actualizar_grafica():
     if len(e_historial_percent) > MAX_PUNTOS:
         e_historial_percent.pop(0)
     linea_e.set_data(eje_x, e_historial_percent)
-    ax_e.relim()
-    ax_e.autoscale_view()
 
     canvas.draw()
 
@@ -164,21 +162,30 @@ error_label.grid(column=0, row=3)
 ttk.Button(frm, text="Quit", command=root.destroy).grid(column=1, row=3) #Boton quit
 
 # --- Gráfica matplotlib en Tkinter ---
-#Grafica de y
-fig, (ax_y, ax_u, ax_e)= plt.subplots(3, figsize=(9, 4), sharex=True)
+fig, (ax_y, ax_u, ax_e) = plt.subplots(3, figsize=(9, 4), sharex=True)
+
 linea_y, = ax_y.plot([], [], label='y (entrada)')
 ax_y.set_title("Historial de y")
 ax_y.set_ylabel("y")
+ax_y.set_ylim(y_min, y_max)
+ax_y.set_xlim(-MAX_PUNTOS + 1, 0)
 ax_y.grid(True)
+
 linea_u, = ax_u.plot([], [], label='u (salida)')
 ax_u.set_title("Historial de u")
 ax_u.set_ylabel("u")
+ax_u.set_ylim(u_min, u_max)
+ax_u.set_xlim(-MAX_PUNTOS + 1, 0)
 ax_u.grid(True)
+
 linea_e, = ax_e.plot([], [], label='e (error)')
 ax_e.set_title("Historial de e")
 ax_e.set_xlabel("Tiempo")
 ax_e.set_ylabel("e")
+ax_e.set_ylim(-100, 100)
+ax_e.set_xlim(-MAX_PUNTOS + 1, 0)
 ax_e.grid(True)
+
 canvas = FigureCanvasTkAgg(fig, master=root)
 canvas.get_tk_widget().grid(row=0, column=1, padx=10, pady=10)
 
