@@ -3,13 +3,17 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import tkinter as tk
 import numpy as np
 
-arduino.inWaiting != 0
+#arduino.inWaiting != 0
+while 
+tiempo = 0
+incremento = 1
+Step = tiempo + incremento
 
 
 def plot():
     ax.clear()
-    x= np.random.randint(0,10,10)
-    y= np.random.randint(0,10,10)
+    x= 
+    y= valor
     ax.plot(x, y)
     canvas.draw()
 
