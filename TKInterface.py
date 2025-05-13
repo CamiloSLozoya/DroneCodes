@@ -6,7 +6,15 @@ import random
 class RealTimeChartApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Multiple Real-Time Charts")
+        self.root.title("Flight Monitor")
+        self.root.geometry("2000x1000")
+        self.root.configure(bg="darkgray")
+        label = tk.Label(root, text="Move Me", bg="lightblue", font=("Arial", 12))
+        label.place(x=150, y=10)
+
+        labelTitulo = tk.Label(root, text=" F L I G H T // M O N I T O R ", bg="crimson", font=("Arial", 20))
+        labelTitulo.pack(padx=20, pady=20)
+
 
         # Create first chart directly in the main window
         self.fig1, self.ax1 = plt.subplots()
@@ -15,7 +23,7 @@ class RealTimeChartApp:
         self.line1, = self.ax1.plot(self.data1, marker="o", label="Chart 1")
         self.ax1.legend()
         self.canvas1 = FigureCanvasTkAgg(self.fig1, master=self.root)
-        self.canvas1.get_tk_widget().pack(side=tk.LEFT, padx=10, pady=10)
+        self.canvas1.get_tk_widget().place(x=100, y=100, width=300, height=200)
 
         # Create second chart directly in the main window
         self.fig2, self.ax2 = plt.subplots()
