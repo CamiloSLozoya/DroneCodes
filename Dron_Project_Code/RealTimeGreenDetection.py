@@ -2,42 +2,52 @@ import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 import time
-import pigpio 
+import serial
 
 #--------------------------------------------------------------------------------------------------------------
 #Este es el setup, aqui se definen las variables y constantes utilizandas
 #--------------------------------------------------------------------------------------------------------------
 
+#Conectar el serial con el arduino
+arduino = serial.Serial('/dev/ttyUSB0', 115200)  # Ajusta 'COM3' al puerto de tu Arduino
+arduino.flush
+
 #Toma de video con camara
-captura=cv2.VideoCapture(1)
+captura=cv2.VideoCapture(0)
+d=0
+
+#Dimensiones de la imagen
+captura.set(cv2.CAP_PROP_FRAME_WIDTH,2560)
+captura.set(cv2.CAP_PROP_FRAME_HEIGHT,1440)
 
 # Rangos del color a detectar (verde en HSV)
 VerdeBajo1 = np.array([36, 50, 70], np.uint8)
 VerdeAlto1 = np.array([89, 255, 255], np.uint8) 
 
 #Toma de desición de cuando activar servo
-Verde_min=35 #porcentaje
-Verdor_min=50 #porcentaje
+Verde_min=10 #porcentaje de verde en pantalla
+Verdor_min=50 #porcentaje de verdor de la zona verde
 
-# Iniciar pigpio
-pi = pigpio.pi()
 #Cambiar este numero dependiendo de los ciclos deseados
 n=5
-if not pi.connected:
-    print("No se pudo conectar a pigpiod")
-    '''exit()''' #Quitar el comentado de aqui
-servo_pin = 18  # GPIO18 = pin físico 12
+servo_pin = 13  # GPIO18 = pin físico 12
 
 #Variables de tiempo
-measureTime=2 #Cantidad de segundos que espera para realizar la acción
+measureTime=1 #Cantidad de segundos que espera para realizar la acción
 t_start=time.gmtime()
 t_next=t_start.tm_sec+measureTime
 
+# Función para mover el servo por PWM en Jetson Nano
 def set_angle(angle):
     angle = max(0, min(180, angle))
-    pulse = 500 + int((angle / 180) * 2000)
-    pi.set_servo_pulsewidth(servo_pin, pulse)
-    print(f"⟶ Ángulo: {angle}° | PWM: {pulse} μs")
+    pulse_ns = 500000 + int((angle / 180) * 5000000)  # Escala a 500,000–2,500,000 ns
+
+    try:
+        with open("/sys/class/pwm/pwmchip0/pwm0/duty_cycle", "w") as f:
+            f.write(str(pulse_ns))
+        print(f"⟶ Ángulo: {angle}° | PWM: {pulse_ns} ns")
+    except Exception as e:
+        print(f"Error al mover el servo: {e}")
 
 #--------------------------------------------------------------------------------------------------------------
 #Loop
@@ -46,13 +56,14 @@ while True:
     if captura.isOpened():
         t=time.gmtime() #obtener tiempo actual
         if (t.tm_sec==(t_next)):
-            #print(t.tm_sec) #Esto es opcional
+            print(t.tm_sec) #Esto es opcional
+            print(t_next)
             ret,img= captura.read()
             if ret == True:
                 #Preparar imagen
                 frameHSV = cv2.cvtColor(img, cv2.COLOR_BGR2HSV) #Convertir imagen a escala HSV
                 maskVerde = cv2.inRange(frameHSV, VerdeBajo1, VerdeAlto1)#Usar mascara para deterctr los pixeles verdes
-                contornos, _ = cv2.findContours(maskVerde, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE) #detectar los contornos 
+                ,contornos, = cv2.findContours(maskVerde, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE) #detectar los contornos 
                 b, g, r = cv2.split(img.astype("float")) #Separar la imagen en sus componentes RGB
 
                 #dibujar los contornos
@@ -81,24 +92,19 @@ while True:
                 print(f"Porcentaje de pixeles verdes: {porcentaje_verde:.2f}%")
                 print(f"Porcentaje de verdor: {porcentaje_verdor:.2f}%")
 
+                #Guardar clip
+                ret, img =captura.read()
+                filename = "file_"+str(d)+""+str(round(porcentaje_verdor,2))+""+str(round(porcentaje_verde,2))+".jpg"
+                if (porcentaje_verde>=Verde_min) & (porcentaje_verdor>=Verdor_min):
+                    cv2.imwrite('//media//jetson//rootfs//home//raspberry//fotosGreen//' + filename,img)
+                else:
+                    cv2.imwrite('//media//jetson//rootfs//home//raspberry//Greent//' + filename,img)
+                d+=1
+                
                 #Actuar con el servomotor
                 if (porcentaje_verde>=Verde_min) & (porcentaje_verdor>=Verdor_min):
                     print("Activar Servo")
-                    '''
-                    for i in range(1,n+1):
-                        set_angle(90)
-                        time.sleep(0.01)
-                        set_angle(95)
-                        time.sleep(0.01)
-                        set_angle(90)
-                        time.sleep(0.01)
-                        set_angle(0)
-                        time.sleep(0.01)
-                        set_angle(5)
-                        time.sleep(0.01)
-                        set_angle(0)
-                        time.sleep(0.2) 
-                        '''
+                    arduino.write(b'r')
                 t_next=t.tm_sec+measureTime
                 if (t_next>=60):
                     t_next=t_next%60
@@ -106,7 +112,6 @@ while True:
         #Salida al presionar s
         if cv2.waitKey(1) & 0xFF == ord("s"):
             break
-
     else: 
         print("Error: no se pudo abrir la camara.")
         exit()

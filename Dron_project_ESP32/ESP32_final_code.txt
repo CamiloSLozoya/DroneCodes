@@ -1,0 +1,212 @@
+#include <Adafruit_Sensor.h>
+#include <DHT.h>
+#include <DHT_U.h>
+#include <Wire.h>
+#include <string.h>
+#include <ESP32Servo.h>
+#include "TinyGPS++.h"
+#include "HardwareSerial.h"
+#include <SparkFun_u-blox_GNSS_v3.h> 
+
+//Mensaje
+#define MAX_DATA_SIZE         11
+#define MAX_MESSAGE_SIZE      5
+#define COMM_DELAY_SECONDS    2
+#define LED_PIN               2
+
+#define DHTPIN 14 //Pin de señal
+#define DHTTYPE DHT22 //El sensor que se está usando
+
+DHT_Unified dht(DHTPIN, DHTTYPE); //Recopila las 2 variables previamente definidas
+
+static const int servoPin_sow = 27; //Define el pin del servo
+Servo servo_sow;
+
+//Antena Lora
+//Cambiar estos valores a conveniencia 
+String lora_band = "915000000"; //Banda de frecuencia (Hz) Se supone que penetra mejor entre menor sea la frecuencia. Chequen la hoja de datos y la de comandos
+String lora_networkid = "18";   //Identificación de la red Lora
+String lora_address = "1";      //Dirección del módulo
+String lora_RX_address = "2";   //Dirección del módulo receptor
+String lora_SF = "11" ;
+String lora_BW = "9" ;
+
+// GPS
+SFE_UBLOX_GNSS myGNSS; 
+
+// --------------------------------------------------
+// Set up routine
+// --------------------------------------------------
+void setup() {
+  delay(200);
+  Serial.begin(115200); //Bauds que deben ser colocados en el Serial Monitor
+  //LORA
+  //Serial2.println("AT+RESET");  delay(1500); //Resetea el LORA
+  Serial2.begin(115200,SERIAL_8N1,16,17); // RX  TX
+  Serial2.println("AT+BAND=" + lora_band);
+  delay(1500);
+  Serial2.println("AT+NETWORKID=" + lora_networkid);
+  delay(1500);
+  Serial2.println("AT+PARAMETER="+ lora_SF + "," + lora_BW + ",2,24");
+  delay(1500);
+  Serial2.println("AT+ADDRESS=" + lora_address);  delay(1500);
+  delay(200);
+  //Others
+  pinMode(LED_PIN, OUTPUT);
+  digitalWrite(LED_PIN,LOW);
+  // Initialize servomotor
+  servo_sow.attach(servoPin_sow); 
+// Initialize temperature sensor
+  dht.begin();
+// GPS
+  Wire.begin(); // Start I2C
+  while (myGNSS.begin() == false) //Connect to the u-blox module using Wire port
+  {
+    Serial.println(F("u-blox GNSS not detected at default I2C address. Retrying..."));
+    delay (1000);
+  }
+  myGNSS.setI2COutput(COM_TYPE_UBX); //Set the I2C port to output UBX only (turn off NMEA noise)
+}
+// --------------------------------------------------
+// Main routine
+// --------------------------------------------------
+void loop() {
+  if (Serial.available()) { // Check if data is available to read
+    char inputChar = Serial.read(); // Read the incoming character
+    if (inputChar == 'R'){
+      //Leer temperatura y humedad
+      String sensorTemp = SensorRead();
+      String gps = GPSRead ();
+
+      //Poner un la lectura del GPS en una string
+
+      String Message = sensorTemp + ";" + gps; //añadir el GPS
+
+      Serial.println(Message);
+      // Transmit data via Zigbee
+      sendLoraData(Message, lora_RX_address);
+      // Espera a recibir una respuesta
+      //delay(2000);
+      //String Mes = receiveLora();
+    }
+    else if (inputChar == 'S'){
+      sow();
+    }
+    else{
+      if (inputChar!=10) {
+      Serial.println("Bad input, try again");
+      }
+    }
+  }
+  else {
+    servo_sow.write(0);
+  }
+}
+// --------------------------------------------------
+// Transmit Zigbee routine
+// --------------------------------------------------
+void sendLoraData(String data, String address)
+{
+  String myString = "AT+SEND=" + address + "," + String(data.length()) + "," + data + "\r\n";
+  char* buf = (char*) malloc(sizeof(char) * myString.length() + 1);
+  //Serial.println(myString);
+  myString.toCharArray(buf, myString.length() + 1);
+  Serial2.write(buf);
+  free(buf);
+}
+
+// --------------------------------------------------
+// Receive Zigbee routine
+// --------------------------------------------------
+String receiveLora() {
+  while (Serial2.available()) {
+    char dir=Serial2.read();
+    if (dir==lora_RX_address[0]) {
+      dir=Serial2.read();
+      String textoEntrada = Serial2.readString();
+      int index1 = textoEntrada.indexOf(',');  // Encuentra primera coma
+      int index2 = textoEntrada.indexOf(',', index1 + 1);  
+      String mensaje = textoEntrada.substring(index1 + 1, index2);
+      Serial.println("Recibido: "+mensaje); 
+      digitalWrite(LED_PIN,HIGH);
+      return mensaje;
+    }
+    else {
+      digitalWrite(LED_PIN,LOW);
+    }
+  }
+}
+
+// --------------------------------------------------
+// Measure Temperature and Humidity
+// --------------------------------------------------
+String SensorRead() {
+  char Temp[9];
+  char Hum[7];
+  sensors_event_t event;
+  dht.temperature().getEvent(&event);
+  if (isnan(event.temperature)) {
+    Serial.println(F("Error reading temperature!"));
+    strcpy(Temp, "0");
+  }
+  else {
+    sprintf(Temp, "T%2.2f°C", event.temperature);
+  }
+  // Get humidity event and print its value.
+  dht.humidity().getEvent(&event);
+  if (isnan(event.relative_humidity)) {
+    Serial.println(F("Error reading humidity!"));
+    strcpy(Hum, "0");
+  }
+  else {
+    sprintf(Hum, "H%3.2f", event.relative_humidity);
+  }
+  String TempHum = String(Temp) + ";" + String(Hum);
+  return TempHum;
+}
+
+// --------------------------------------------------
+// Execute servo rutine
+// --------------------------------------------------
+void sow() {
+  for (int i = 0; i < 5; ++i) {
+    servo_sow.write(90);  // libera
+    delay(10);
+    servo_sow.write(95);
+    delay(10);
+    servo_sow.write(90);  // libera
+    delay(100);
+    servo_sow.write(0);
+    delay(10);
+    servo_sow.write(5);  // libera
+    delay(10);
+    servo_sow.write(0);
+    delay(10);
+  }
+  Serial.println("Servo, liberó el drogue");
+  delay(500); 
+}
+// --------------------------------------------------
+// Obtain Coordenates with GPS
+// --------------------------------------------------
+
+String GPSRead (){
+    String Coords;
+    if (myGNSS.getPVT() ){
+      int32_t latitude = myGNSS.getLatitude();
+      char lat[23];
+      sprintf(lat, "LAT%d",  latitude);
+      int32_t longitude = myGNSS.getLongitude();
+      char log[25];
+      sprintf(log, "LOG%d", longitude);
+      int32_t altitude = myGNSS.getAltitudeMSL();
+      char alt[11];
+      sprintf(alt, "ALT%d", altitude);
+      Coords = String(lat) + ";" + String(log)+ ";" + String(alt);
+    }
+    else {
+      Coords = "No se pudo acceder al GPS";
+    }
+
+    return Coords;
+}
