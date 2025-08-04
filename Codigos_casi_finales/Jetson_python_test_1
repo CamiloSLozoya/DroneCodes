@@ -20,7 +20,7 @@ VerdeBajo1 = np.array([36, 50, 70], np.uint8)
 VerdeAlto1 = np.array([89, 255, 255], np.uint8) 
 
 #Conectar el serial con el ESP32
-ESP32 = serial.Serial('COM3', 115200)  # Ajusta el puerto al de la jetson
+ESP32 = serial.Serial('COM5', 115200)  # Ajusta el puerto al de la jetson
 ESP32.flush
 
 #Toma de desición de cuando activar servo
@@ -82,14 +82,20 @@ def ObtenerDatosESP (altura,porcentaje_verde, porcentaje_verdor,fertil):
     print("Enviado: ", mensaje)
     while ESP32.in_waiting==0:
         linea=0
-    linea=ESP32.readline()
-    temperatura, humedad, latitud, longitud, altitud = [float(x) for x in linea.decode('utf-8').split(";")]
-    print(f"Temperatura: {temperatura:.2f} °C")
-    print(f"Humedad {humedad:.2f}%")
-    print(f"Latitud {latitud:.2f}°")
-    print(f"Longitud {longitud:.2f}°")
-    print(f"Altutud {altitud:.2f} m")
-    return [temperatura, humedad, latitud, longitud, altitud]
+    try: 
+        linea=ESP32.readline().decode('utf-8').strip()
+        print(linea)
+        if (linea):
+            temperatura, humedad, latitud, longitud, altitud = [float(x) for x in linea.split(";")]
+            print(f"Temperatura: {temperatura:.2f} °C")
+            print(f"Humedad {humedad:.2f}%")
+            print(f"Latitud {latitud:.2f}°")
+            print(f"Longitud {longitud:.2f}°")
+            print(f"Altutud {altitud:.2f} m")
+            return [temperatura, humedad, latitud, longitud, altitud]
+    except Exception as e:
+        print(f"Error leyendo del puerto serial: {e}")
+    time.sleep(0.1)
 
 #--------------------------------------------------------------------------------------------------------------
 #Tomar altura con el sensor LIDAR
@@ -107,10 +113,10 @@ def leer_distancia():
 def isFertil (porcentaje_verde, porcentaje_verdor):
      if  (porcentaje_verde>=Verde_min) & (porcentaje_verdor>=Verdor_min):
           print ("Suelo fertil")
-          return True
+          return 1
      else: 
           print ("Suelo infertil")
-          return False 
+          return 0 
      
 #--------------------------------------------------------------------------------------------------------------
 #Guardar imagen en la carpeta correcta
@@ -164,7 +170,7 @@ while True:
             
             #SaveImage(fertil,latitud, longitud, altitud)
 
-            ActivarServo(fertil,altura)
+            ActivarServo(0,altura)
             #--------------------------------------------------------------------------------------------------
 
     #Salida al presionar s

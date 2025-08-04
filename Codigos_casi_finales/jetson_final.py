@@ -4,14 +4,20 @@ import matplotlib.pyplot as plt
 import time
 import serial
 import minimalmodbus
+import tensorflow as tf
 
 #--------------------------------------------------------------------------------------------------------------
 #Este es el setup, aqui se definen las variables y constantes utilizandas
 #--------------------------------------------------------------------------------------------------------------
 
 #Toma de fotos con camara
-captura=cv2.VideoCapture(1) #Cambiar en jetson a 0
+captura=cv2.VideoCapture(0) #Cambiar en jetson a 0
 d=0
+
+# Carga del modelo CNN
+model = tf.keras.models.load_model('modeloajetson.h5')
+down_size = (280, 280)  # Tamaño de entrada para el modelo
+
 #Dimensiones de la imagen
 captura.set(cv2.CAP_PROP_FRAME_WIDTH,2560)
 captura.set(cv2.CAP_PROP_FRAME_HEIGHT,1440)
@@ -20,7 +26,9 @@ VerdeBajo1 = np.array([36, 50, 70], np.uint8)
 VerdeAlto1 = np.array([89, 255, 255], np.uint8) 
 
 #Conectar el serial con el ESP32
-ESP32 = serial.Serial('COM3', 115200)  # Ajusta el puerto al de la jetson
+ESP32 = serial.Serial('/dev/ttyUSB1', 115200)  # Ajusta el puerto al de la jetson
+ESP32.reset_input_buffer()   # limpia lo que ha recibido y aún no has leído
+ESP32.reset_output_buffer()  # limpia lo que está por enviar (escrito pero no transmitido)
 ESP32.flush
 
 #Toma de desición de cuando activar servo
@@ -28,7 +36,7 @@ Verde_min=35 #porcentaje
 Verdor_min=50 #porcentaje
 
 # Configuración del sensor
-instrument = minimalmodbus.Instrument('COM6', 1)
+instrument = minimalmodbus.Instrument('/dev/ttyUSB0', 1)
 instrument.serial.baudrate = 115200
 instrument.serial.bytesize = 8
 instrument.serial.parity = serial.PARITY_NONE
@@ -37,8 +45,52 @@ instrument.serial.timeout = 0.05
 instrument.mode = minimalmodbus.MODE_RTU
 
 #Variables de tiempo
-measureTime=2000 #Cantidad de milisegundos que espera para realizar la acción
+measureTime=2500 #Cantidad de milisegundos que espera para realizar la acción
 t_start=time.perf_counter()
+
+#--------------------------------------------------------------------------------------------------------------
+#Ajuste Gamma
+#--------------------------------------------------------------------------------------------------------------
+def adjust_gamma(image, gamma=1.5):
+    invGamma = 1.0 / gamma
+    table = np.array([((i / 255.0) ** invGamma) * 255 for i in np.arange(256)]).astype("uint8")
+    return cv2.LUT(image, table)
+
+#--------------------------------------------------------------------------------------------------------------
+#Filtro de imagen para CNN
+#--------------------------------------------------------------------------------------------------------------
+def preparaciónImagen():
+     ret, frame = captura.read()
+     # 1. Ajuste de brillo/saturación
+     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+     h, s, v = cv2.split(hsv)
+     v = np.clip(v * 0.6, 0, 255).astype(np.uint8)  # reducir brillo
+     s = np.clip(s * 1.7, 0, 255).astype(np.uint8)  # aumentar saturación
+     hsv_adjusted = cv2.merge((h, s, v))
+     frame = cv2.cvtColor(hsv_adjusted, cv2.COLOR_HSV2BGR)
+
+     # 2. Ajuste dinámico de gamma según el brillo
+     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+     mean_brightness = np.mean(gray)
+     gamma = 1.5 if mean_brightness < 80 else 0.8
+     frame_adjusted = adjust_gamma(frame, gamma=gamma)
+     return frame_adjusted
+
+#--------------------------------------------------------------------------------------------------------------
+#CNN
+#--------------------------------------------------------------------------------------------------------------
+def isFertilCNN(frame_adjusted):
+    # Preparar imagen para el modelo (redimensionar)
+    resized = cv2.resize(frame_adjusted, down_size, interpolation=cv2.INTER_LINEAR)
+    # Realizar predicción
+    prediction = model.predict(np.array([resized]))[0]
+    
+    if  (prediction[0]>=0.7):
+          print ("Suelo fertil")
+          return 1
+    else: 
+          print ("Suelo infertil")
+          return 0 
 
 #--------------------------------------------------------------------------------------------------------------
 #Tomar foto obtener verde y verdor
@@ -49,8 +101,10 @@ def obtenerVerde ():
                 #Preparar imagen
                 frameHSV = cv2.cvtColor(img, cv2.COLOR_BGR2HSV) #Convertir imagen a escala HSV
                 maskVerde = cv2.inRange(frameHSV, VerdeBajo1, VerdeAlto1)#Usar mascara para deterctr los pixeles verdes
-                contornos,_ = cv2.findContours(maskVerde, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE) #detectar los contornos 
+                ,contornos, = cv2.findContours(maskVerde, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE) #detectar los contornos 
                 b, g, r = cv2.split(img.astype("float")) #Separar la imagen en sus componentes RGB
+
+
                 #dibujar los contornos
                 for i in contornos:
                         area = cv2.contourArea(i)
@@ -77,19 +131,36 @@ def obtenerVerde ():
 #Obtener temperatura, humedad y GPS del ESP32
 #--------------------------------------------------------------------------------------------------------------
 def ObtenerDatosESP (altura,porcentaje_verde, porcentaje_verdor,fertil):
-    mensaje="R"+str(altura)+";"+str(porcentaje_verde)+";"+str(porcentaje_verdor)+";"+str(fertil)
+    mensaje="R"+str(altura)+";"+str(porcentaje_verde)+";"+str(porcentaje_verdor)+";"+str(fertil)+"\n"
     ESP32.write(mensaje.encode())  # Envía la tecla por Serial
     print("Enviado: ", mensaje)
-    while ESP32.in_waiting==0:
-        linea=0
-    linea=ESP32.readline()
-    temperatura, humedad, latitud, longitud, altitud = [float(x) for x in linea.decode('utf-8').split(";")]
-    print(f"Temperatura: {temperatura:.2f} °C")
-    print(f"Humedad {humedad:.2f}%")
-    print(f"Latitud {latitud:.2f}°")
-    print(f"Longitud {longitud:.2f}°")
-    print(f"Altutud {altitud:.2f} m")
-    return [temperatura, humedad, latitud, longitud, altitud]
+    flag=1
+    t_start=time.perf_counter()
+    while (ESP32.in_waiting==0) and (flag):
+        t_next=time.perf_counter()
+        if ((t_next-t_start)*1000<1000):
+            linea=0
+        else: 
+             print("Fallo la comunicacion con el ESP32")
+             flag=0
+    if flag:
+        try: 
+            linea=ESP32.readline().decode('utf-8').strip()
+            print(linea)
+            if (linea):
+                temperatura, humedad, latitud, longitud, altitud = [float(x) for x in linea.split(";")]
+                print(f"Temperatura: {temperatura:.2f} °C")
+                print(f"Humedad {humedad:.2f}%")
+                print(f"Latitud {latitud:.2f}°")
+                print(f"Longitud {longitud:.2f}°")
+                print(f"Altutud {altitud:.2f} m")
+                return [temperatura, humedad, latitud, longitud, altitud]
+        except Exception as e:
+            print(f"Error leyendo del puerto serial: {e}")
+            return [0.0, 0.0, 0.0, 0.0, 0.0]
+    else:
+         return [0.0, 0.0, 0.0, 0.0, 0.0]
+    time.sleep(0.1)
 
 #--------------------------------------------------------------------------------------------------------------
 #Tomar altura con el sensor LIDAR
@@ -100,17 +171,17 @@ def leer_distancia():
         return distancia
     except Exception as e:
         print(f"Error al leer distancia: {e}")
-        return None
+        return 0.0
 #--------------------------------------------------------------------------------------------------------------
 #Algoritmo para la toma de desiciones
 #--------------------------------------------------------------------------------------------------------------
 def isFertil (porcentaje_verde, porcentaje_verdor):
      if  (porcentaje_verde>=Verde_min) & (porcentaje_verdor>=Verdor_min):
           print ("Suelo fertil")
-          return True
+          return 1
      else: 
           print ("Suelo infertil")
-          return False 
+          return 0 
      
 #--------------------------------------------------------------------------------------------------------------
 #Guardar imagen en la carpeta correcta
@@ -130,13 +201,14 @@ def SaveImage(fertil,metadata):
 #--------------------------------------------------------------------------------------------------------------
 def ActivarServo(fertil, altura):
     #ecuación para control servo
-    servo_control=int(altura*3+1) #Hay que cambiar esto
+    servo_control=int(altura*10+10) #Hay que cambiar esto
     if fertil:
-        mensaje= "S"+ str(servo_control)
+        mensaje= "S"+ str(servo_control)+"\n"
         ESP32.write(mensaje.encode())  # Envía la tecla por Serial
-        print("Enviado control servo")
+        print(f"Servo activado con {servo_control} ciclos")
     else:
-         print("No enviado")
+         print("Servo no activado")
+         #._annotations_
 
 #--------------------------------------------------------------------------------------------------------------
 #Main Loop
@@ -152,21 +224,19 @@ while True:
             [porcentaje_verde, porcentaje_verdor]=obtenerVerde()
             altura=leer_distancia()
             print(f"El dron esta a {altura:.2f} m")
-            fertil=isFertil (porcentaje_verde, porcentaje_verdor)
+            img=preparaciónImagen()
+            fertil=isFertilCNN(img)
+            #fertil=isFertil (porcentaje_verde, porcentaje_verdor)
             [temperatura, humedad, latitud, longitud, altitud] = ObtenerDatosESP(altura,porcentaje_verde, porcentaje_verdor, fertil)
-            
+            time.sleep(1)
             print(f"Temperatura: {temperatura:.2f} °C")
             print(f"Humedad {humedad:.2f}%")
             print(f"Latitud {latitud:.2f}°")
             print(f"Longitud {longitud:.2f}°")
             print(f"Altutud {altitud:.2f} m")
-
-            
             #SaveImage(fertil,latitud, longitud, altitud)
-
             ActivarServo(fertil,altura)
             #--------------------------------------------------------------------------------------------------
-
     #Salida al presionar s
         if cv2.waitKey(1) & 0xFF == ord("s"):
             break

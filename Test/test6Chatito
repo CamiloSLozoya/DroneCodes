@@ -1,0 +1,92 @@
+import tkinter as tk
+from tkinter import ttk
+import threading
+import serial
+import time
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+
+# Configuración del puerto serial
+SERIAL_PORT = "COM9"  # Cambia esto al puerto correcto
+BAUD_RATE = 115200
+
+# Inicialización de variables
+temperatura = 0.0
+altitud = 0.0
+temperatura_historial = []
+altitud_historial = []
+MAX_PUNTOS = 30
+
+# Función para leer datos del puerto serial
+def leer_serial():
+    global temperatura, altitud
+    try:
+        esp32 = serial.Serial(SERIAL_PORT, BAUD_RATE)
+        while True:
+            line = esp32.readline().decode('utf-8').strip()
+            if line:
+                try:
+                    datos = [float(x) for x in line.split(";")]
+                    if len(datos) >= 5:
+                        temperatura = datos[0]
+                        altitud = datos[4]
+                except ValueError:
+                    pass
+            time.sleep(0.1)
+    except serial.SerialException as e:
+        print(f"Error al abrir el puerto serial: {e}")
+
+# Función para actualizar los gráficos
+def actualizar_graficas():
+    temperatura_historial.append(temperatura)
+    altitud_historial.append(altitud)
+
+    if len(temperatura_historial) > MAX_PUNTOS:
+        temperatura_historial.pop(0)
+    if len(altitud_historial) > MAX_PUNTOS:
+        altitud_historial.pop(0)
+
+    line1.set_ydata(temperatura_historial)
+    line2.set_ydata(altitud_historial)
+    ax1.set_xlim(0, MAX_PUNTOS)
+    ax2.set_xlim(0, MAX_PUNTOS)
+    ax1.set_ylim(0, max(60, max(temperatura_historial) + 5))
+    ax2.set_ylim(0, max(100, max(altitud_historial) + 5))
+    canvas1.draw()
+    canvas2.draw()
+
+    root.after(1000, actualizar_graficas)
+
+# Configuración de la interfaz Tkinter
+root = tk.Tk()
+root.title("Monitor de Vuelo")
+root.geometry("800x600")
+
+# Configuración de las gráficas
+fig1, ax1 = plt.subplots()
+ax1.set_title("Temperatura")
+ax1.set_xlabel("Tiempo")
+ax1.set_ylabel("°C")
+line1, = ax1.plot([], [], color='red')
+
+fig2, ax2 = plt.subplots()
+ax2.set_title("Altitud")
+ax2.set_xlabel("Tiempo")
+ax2.set_ylabel("m")
+line2, = ax2.plot([], [], color='blue')
+
+canvas1 = FigureCanvasTkAgg(fig1, master=root)
+canvas1.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+
+canvas2 = FigureCanvasTkAgg(fig2, master=root)
+canvas2.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+
+# Iniciar el hilo de lectura serial
+hilo_serial = threading.Thread(target=leer_serial, daemon=True)
+hilo_serial.start()
+
+# Iniciar la actualización de las gráficas
+actualizar_graficas()
+
+# Ejecutar la interfaz
+root.mainloop()
