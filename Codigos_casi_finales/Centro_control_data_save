@@ -5,9 +5,12 @@ import serial
 import threading
 import matplotlib.pyplot as plt
 import time
+import csv
+import datetime
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from PIL import Image, ImageTk, ImageDraw
 import random
+import os
 
 esp32 = None  # Declarar globalmente antes del try
 
@@ -15,6 +18,52 @@ esp32 = None  # Declarar globalmente antes del try
 SERIAL_PORT = "COM9"
 BAUD_RATE = 115200
 # ----------------------------------------------------------
+
+file_name = "historial_datos.csv"
+
+class DatosJetson:
+    def __init__(self, temperatura, humedad, fertilidad, altitud, altLidar, latitud, longitud, verde, verdor ):
+        self.temperatura = temperatura
+        self.humedad = humedad
+        self.fertil = fertilidad
+        self.altura = altitud
+        self.altitudLidar = altLidar
+        self.latitud = latitud
+        self.longitud = longitud
+        self.verde = verde
+        self.verdor = verdor
+
+    def guardadoCSV(self):
+        escribir_encabezados = not os.path.exists(file_name) or os.path.getsize(file_name) == 0
+        f1 = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        with open(file_name, "a", newline='', encoding='utf-8') as csvfile:
+            writer = csv.writer(csvfile, delimiter=',')
+
+            if escribir_encabezados:
+                writer.writerow([
+                    "Fecha y hora",
+                    "Temperatura (°C)",
+                    "Humedad (%)",
+                    "Fertilidad",
+                    "Altura GPS (m)",
+                    "Altura Lidar (m)",
+                    "Altitud (mm)",
+                    "Latitud (°)",
+                    "Longitud (°)"
+                ])
+
+            writer.writerow([
+                f1,
+                f"{self.temperatura:.2f}",
+                f"{self.humedad:.2f}",
+                f"{self.latitud:.6f}",   
+                f"{self.longitud:.6f}",  
+                f"{self.altura:.2f}", 
+                f"{self.altitudLidar:.2f}",   
+                f"{self.verde:.6f}",
+                f"{self.verdor:.6f}",       
+                "Fértil" if self.fertil else "Infértil",
+            ])
 
 try:
     esp32 = serial.Serial(SERIAL_PORT, BAUD_RATE)
@@ -47,6 +96,8 @@ root = tk.Tk()
 root.title("Flight Monitor")
 root.geometry("1100x720")
 root.configure(bg="#f6f6f6")
+
+
 
 # Fondo semitransparente
 bg_image = Image.open(r"C:/Users/camil/Downloads/dronsito.jpg").resize((1100, 720)).convert("RGBA")
@@ -256,12 +307,24 @@ def leer_serial():
         return
 
     while True:
+        #print("hola")
         try:
             line = esp32.readline().decode('utf-8').strip()
             print(line)
             if line:
                 print("línea leída")
                 temperatura, humedad, latitud, longitud, altitud, altLidar, verde, verdor, fertil  = [float(x) for x in line.split(";")]
+                datos = DatosJetson(
+                temperatura=temperatura,
+                humedad=humedad,
+                latitud=latitud/10000000,
+                longitud=longitud/10000000,
+                altitud=altitud,
+                altLidar=altLidar,
+                verde = verde,
+                verdor = verdor,
+                fertilidad=fertil
+                )
                 print(f"Temperatura: {temperatura:.2f} °C")
                 print(f"Humedad {humedad:.2f}%")
                 print(f"Latitud {latitud:.2f}°")
@@ -269,9 +332,10 @@ def leer_serial():
                 print(f"Altitud {altitud:.2f} m")
                 print(f"AltLidar {altLidar:.2f} m")
                 print(f"Verde {verde:.2f} %")
-                print(f"Verdor {verdor:.2f} m")
+                print(f"Verdor {verdor:.2f} %")
                 print(f"Fertil {fertil:.2f} ")
                 root.after(0, update_data)
+                datos.guardadoCSV()
         except Exception as e:
             print(f"Error leyendo del puerto serial: {e}")
         time.sleep(0.1)
